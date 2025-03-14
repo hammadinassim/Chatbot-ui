@@ -74,7 +74,7 @@ const Chatbot = () => {
   const [messages, setMessages] = React.useState([
     {
       id: 1,
-      text: "Hello! What do you need my friend?",
+      text: "Hello! What can I do for help?",
       isUser: false,
       timestamp: new Date(),
     },
@@ -123,7 +123,7 @@ const Chatbot = () => {
     setMessages([
       {
         id: 1,
-        text: "Hello! What do you need my friend?",
+        text: "Hello! What can I do for help?",
         isUser: false,
         timestamp: new Date(),
       },
