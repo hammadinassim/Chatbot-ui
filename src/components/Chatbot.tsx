@@ -9,16 +9,20 @@ import {
   Avatar,
 } from "@mui/material";
 import { styled } from "@mui/system";
-import { IoSend } from "react-icons/io5";
+import { IoSend, IoTrashBinOutline } from "react-icons/io5";
 import { format } from "date-fns";
+import bot_avatar from "../assets/chocked.jpeg";
+import avatar from "../assets/avatar.jpg";
 
 const ChatContainer = styled(Container)(({ theme }) => ({
-  height: "90vh",
+  height: "95vh",
+  minWidth: "95vw",
   display: "flex",
   flexDirection: "column",
-  padding: theme.spacing(2),
+  justifyContent: "center",
+  padding: "25px",
   backgroundColor: "#f5f5f5",
-  borderRadius: theme.spacing(2),
+  borderRadius: "10px",
   margin: theme.spacing(2),
   boxShadow: "0 4px 6px rgba(0, 0, 0, 0.1)",
 }));
@@ -28,6 +32,13 @@ const MessageContainer = styled(Box)({
   overflow: "auto",
   marginBottom: "16px",
   padding: "16px",
+  // Hide scrollbar for Chrome, Safari and Opera
+  "&::-webkit-scrollbar": {
+    display: "none",
+  },
+  // Hide scrollbar for IE, Edge and Firefox
+  "-ms-overflow-style": "none",
+  "scrollbar-width": "none",
 });
 
 interface MessageBubbleProps {
@@ -38,15 +49,20 @@ const MessageBubble = styled(Paper)<MessageBubbleProps>(({ isUser }) => ({
   padding: "12px 16px",
   margin: "8px 0",
   maxWidth: "70%",
-  borderRadius: "12px",
-  backgroundColor: isUser ? "#1976d2" : "#ffffff",
+  borderRadius: "10px",
+  backgroundColor: isUser ? "#1e233b" : "#ffffff",
   color: isUser ? "#ffffff" : "#000000",
-  alignSelf: isUser ? "flex-end" : "flex-start",
+  marginLeft: isUser ? "auto" : "0",
+  marginRight: isUser ? "0" : "auto",
   boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
+  wordBreak: "break-word",
+  whiteSpace: "pre-wrap",
+  overflowWrap: "break-word",
 }));
 
 const InputContainer = styled(Box)({
   display: "flex",
+  alignItems: "center",
   gap: "8px",
   padding: "16px",
   backgroundColor: "#ffffff",
@@ -58,13 +74,13 @@ const Chatbot = () => {
   const [messages, setMessages] = React.useState([
     {
       id: 1,
-      text: "Hello! How can I help you today?",
+      text: "Hello! What do you need my friend?",
       isUser: false,
       timestamp: new Date(),
     },
   ]);
   const [inputText, setInputText] = React.useState("");
-  const [isTyping, setIsTyping] = React.useState(false);
+  const [isThinking, setIsThinking] = React.useState(false);
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -87,9 +103,9 @@ const Chatbot = () => {
 
     setMessages((prev) => [...prev, userMessage]);
     setInputText("");
-    setIsTyping(true);
+    setIsThinking(true);
 
-    // Simulate bot response
+    // Mock bot response
     setTimeout(() => {
       const botMessage = {
         id: messages.length + 2,
@@ -98,8 +114,20 @@ const Chatbot = () => {
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, botMessage]);
-      setIsTyping(false);
+      setIsThinking(false);
     }, 1000);
+  };
+
+  const handleClear = () => {
+    setInputText("");
+    setMessages([
+      {
+        id: 1,
+        text: "Hello! What do you need my friend?",
+        isUser: false,
+        timestamp: new Date(),
+      },
+    ]);
   };
 
   const handleKeyPress = (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -110,7 +138,7 @@ const Chatbot = () => {
   };
 
   return (
-    <ChatContainer sx={{ minWidth: "1000px" }} maxWidth="md">
+    <ChatContainer>
       <MessageContainer>
         {messages.map((message) => (
           <Box
@@ -124,9 +152,9 @@ const Chatbot = () => {
             <Box sx={{ display: "flex", alignItems: "flex-end", gap: 1 }}>
               {!message.isUser && (
                 <Avatar
-                  src="https://images.unsplash.com/photo-1531747118685-ca8fa6e08806"
+                  src={bot_avatar}
                   alt="Bot Avatar"
-                  sx={{ width: 32, height: 32 }}
+                  sx={{ width: 48, height: 48 }}
                 />
               )}
               <MessageBubble isUser={message.isUser}>
@@ -140,17 +168,17 @@ const Chatbot = () => {
               </MessageBubble>
               {message.isUser && (
                 <Avatar
-                  src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde"
+                  src={avatar}
                   alt="User Avatar"
-                  sx={{ width: 32, height: 32 }}
+                  sx={{ width: 48, height: 48 }}
                 />
               )}
             </Box>
           </Box>
         ))}
-        {isTyping && (
+        {isThinking && (
           <Typography variant="caption" sx={{ ml: 2, color: "text.secondary" }}>
-            Bot is typing...
+            Bot is thinking...
           </Typography>
         )}
         <div ref={messagesEndRef} />
@@ -162,7 +190,7 @@ const Chatbot = () => {
           placeholder="Type your message..."
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
-          onKeyPress={handleKeyPress}
+          onKeyDown={handleKeyPress}
           multiline
           maxRows={4}
           sx={{ backgroundColor: "#ffffff" }}
@@ -177,9 +205,27 @@ const Chatbot = () => {
             "&:hover": {
               backgroundColor: "#1565c0",
             },
+            height: 48,
+            width: 48,
           }}
         >
           <IoSend />
+        </IconButton>
+        <IconButton
+          color="error"
+          onClick={handleClear}
+          disabled={!messages?.find((message) => message.isUser)}
+          sx={{
+            backgroundColor: "#e00202",
+            color: "#ffffff",
+            "&:hover": {
+              backgroundColor: "#a30202",
+            },
+            height: 48,
+            width: 48,
+          }}
+        >
+          <IoTrashBinOutline />
         </IconButton>
       </InputContainer>
     </ChatContainer>
