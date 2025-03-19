@@ -7,9 +7,19 @@ import {
   Box,
   Typography,
   Avatar,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
 } from "@mui/material";
 import { styled } from "@mui/system";
-import { IoSend, IoTrashBinOutline } from "react-icons/io5";
+import {
+  IoSend,
+  IoTrashBinOutline,
+  IoThumbsUp,
+  IoThumbsDown,
+} from "react-icons/io5";
 import { format } from "date-fns";
 import bot_avatar from "../assets/chocked.jpeg";
 import avatar from "../assets/avatar.jpg";
@@ -70,18 +80,35 @@ const InputContainer = styled(Box)({
   boxShadow: "0 -2px 4px rgba(0, 0, 0, 0.1)",
 });
 
+interface ChatMessage {
+  id: number;
+  text: string;
+  isUser: boolean;
+  timestamp: Date;
+  feedback?: "up" | "down" | "";
+  comment?: string;
+}
+
 const Chatbot = () => {
-  const [messages, setMessages] = React.useState([
+  const [messages, setMessages] = React.useState<ChatMessage[]>([
     {
       id: 1,
       text: "Hello! What can I do for help?",
       isUser: false,
       timestamp: new Date(),
+      feedback: "",
     },
   ]);
   const [inputText, setInputText] = React.useState("");
   const [isThinking, setIsThinking] = React.useState(false);
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
+
+  /* --- Feedback management --- */
+  const [showModal, setShowModal] = React.useState(false);
+  const [feedbackComment, setFeedbackComment] = React.useState("");
+  const [selectedMessageId, setSelectedMessageId] = React.useState<
+    number | null
+  >(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -137,10 +164,60 @@ const Chatbot = () => {
     }
   };
 
+  /* --- Thumbs feedback management --- */
+
+  // Green thumb
+  const handleThumbUpClick = (messageId: number) => {
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === messageId
+          ? // toggle
+            { ...m, feedback: m.feedback === "up" ? "" : "up" }
+          : m
+      )
+    );
+  };
+
+  // Red thumb : open popin to add feedback message
+  const handleThumbDownClick = (messageId: number) => {
+    setSelectedMessageId(messageId);
+    setShowModal(true);
+
+    setMessages((prev) =>
+      prev.map((m) => (m.id === messageId ? { ...m, feedback: "down" } : m))
+    );
+  };
+
+  // Close popin
+  const handleCloseModal = () => {
+    setShowModal(false);
+    setFeedbackComment("");
+    setSelectedMessageId(null);
+  };
+
+  // Submit feedback
+  const handleSubmitFeedback = () => {
+    if (selectedMessageId) {
+      // Stock comment in message
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === selectedMessageId ? { ...m, comment: feedbackComment } : m
+        )
+      );
+      console.log(
+        "Feedback for message",
+        selectedMessageId,
+        "with reason:",
+        feedbackComment
+      );
+    }
+    handleCloseModal();
+  };
+
   return (
     <ChatContainer>
       <MessageContainer>
-        {messages.map((message) => (
+        {messages.map((message, idx) => (
           <Box
             key={message.id}
             sx={{
@@ -159,12 +236,45 @@ const Chatbot = () => {
               )}
               <MessageBubble isUser={message.isUser}>
                 <Typography variant="body1">{message.text}</Typography>
-                <Typography
-                  variant="caption"
-                  sx={{ display: "block", mt: 0.5, opacity: 0.7 }}
+                <Box
+                  sx={{
+                    display: "flex",
+                    gap: 1,
+                    justifyContent: "space-between",
+                  }}
                 >
-                  {format(message.timestamp, "HH:mm")}
-                </Typography>
+                  <Typography
+                    variant="caption"
+                    sx={{ display: "block", mt: 0.5, opacity: 0.7 }}
+                  >
+                    {format(message.timestamp, "HH:mm")}
+                  </Typography>
+                  {!message.isUser && idx !== 0 && (
+                    <Box>
+                      <IconButton
+                        size="small"
+                        onClick={() => handleThumbUpClick(message.id)}
+                        aria-label="Thumbs up"
+                        color={
+                          message.feedback === "up" ? "success" : "default"
+                        }
+                      >
+                        <IoThumbsUp />
+                      </IconButton>
+
+                      <IconButton
+                        size="small"
+                        onClick={() => handleThumbDownClick(message.id)}
+                        aria-label="Thumbs down"
+                        color={
+                          message.feedback === "down" ? "error" : "default"
+                        }
+                      >
+                        <IoThumbsDown />
+                      </IconButton>
+                    </Box>
+                  )}
+                </Box>
               </MessageBubble>
               {message.isUser && (
                 <Avatar
@@ -228,6 +338,24 @@ const Chatbot = () => {
           <IoTrashBinOutline />
         </IconButton>
       </InputContainer>
+      <Dialog open={showModal} onClose={handleCloseModal}>
+        <DialogTitle>Can you give a feedback about my answer ?</DialogTitle>
+        <DialogContent>
+          <TextField
+            fullWidth
+            multiline
+            rows={3}
+            value={feedbackComment}
+            onChange={(e) => setFeedbackComment(e.target.value)}
+            placeholder="Tell me more..."
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button variant="contained" onClick={handleSubmitFeedback}>
+            Send
+          </Button>
+        </DialogActions>
+      </Dialog>
     </ChatContainer>
   );
 };
