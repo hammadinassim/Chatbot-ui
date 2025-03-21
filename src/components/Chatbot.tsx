@@ -151,7 +151,6 @@ const Chatbot = () => {
 
   /**
    * Fetch existing messages from DynamoDB once the component mounts.
-   * If your table already has a bot greeting, you'll see it here.
    * Otherwise, we already have a local default.
    */
   React.useEffect(() => {
@@ -172,11 +171,6 @@ const Chatbot = () => {
           comment: item.comment || "",
         })) as ChatMessage[];
 
-        /**
-         * Optionally, you can check if there's already a bot greeting in the DB.
-         * If so, you could skip adding the default message.
-         * For simplicity, let's merge them.
-         */
         setMessages((prev) => [...prev, ...newMessages]);
       } catch (error) {
         console.error("Fetch error:", error);
@@ -275,7 +269,6 @@ const Chatbot = () => {
 
   /**
    * Clear local messages and reset to the initial bot greeting.
-   * NOTE: This does not remove existing DynamoDB records unless you add an API call.
    */
   const handleClear = () => {
     setInputText("");
@@ -284,7 +277,7 @@ const Chatbot = () => {
   };
 
   /**
-   * Send message on Enter (Shift+Enter for multiline).
+   * Send message on Enter.
    */
   const handleKeyPress = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Enter" && !event.shiftKey) {
