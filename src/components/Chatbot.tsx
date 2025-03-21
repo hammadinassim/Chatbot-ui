@@ -12,6 +12,7 @@ import {
   DialogContent,
   DialogActions,
   Button,
+  Rating,
 } from "@mui/material";
 import { styled } from "@mui/system";
 import {
@@ -21,50 +22,56 @@ import {
   IoThumbsDown,
 } from "react-icons/io5";
 import { format } from "date-fns";
+import { v4 as uuidv4 } from "uuid"; // For generating unique messageId
 import bot_avatar from "../assets/chocked.jpeg";
 import avatar from "../assets/avatar.jpg";
 
 /**
- * ChatMessage represents a single message in the chat.
- * - `localId`: a local unique ID for rendering in React.
- * - `conversationId`: the ID grouping messages in DynamoDB.
- * - `dbTimestamp`: ISO string (Sort Key in DynamoDB).
- * - `text`: the message text.
- * - `isUser`: true if user, false if bot.
- * - `feedback`: "up", "down", or "".
- * - `comment`: text for user feedback if "down".
+ * Each message in the chat has:
+ * - localId: unique number in React, for rendering only (not sent to backend).
+ * - conversationId: PK in DynamoDB (ex: "conversation_1").
+ * - messageId: SK in DynamoDB (a UUID).
+ * - timestamp: ISO string for display/sorting.
+ * - text: message text.
+ * - isUser: true if user, false if bot.
+ * - feedback: "up" | "down" | "".
+ * - comment: optional text if feedback is negative (or for any feedback).
+ * - rating: numeric rating (1–10) or null if none.
  */
 interface ChatMessage {
   localId: number;
   conversationId: string;
-  dbTimestamp: string;
+  messageId: string;
+  timestamp: string;
   text: string;
   isUser: boolean;
   feedback: "up" | "down" | "";
   comment: string;
+  rating?: number | null;
 }
 
-// Replace with your API Gateway endpoint
+/**
+ * Your API Gateway endpoint. Update with the actual URL.
+ */
 const BACKEND_URL = "https://2lvum8mh59.execute-api.us-east-1.amazonaws.com";
 
 /**
- * A default bot message that appears at the beginning of the chat.
- * We use a function to generate a fresh timestamp each time.
+ * Default greeting from the bot.
  */
-const createDefaultBotMessage = (): ChatMessage => {
-  return {
-    localId: 1,
-    conversationId: "conversation_1",
-    dbTimestamp: new Date().toISOString(),
-    text: "Hello! What can I do to help you?",
-    isUser: false,
-    feedback: "",
-    comment: "",
-  };
-};
+const createDefaultBotMessage = (): ChatMessage => ({
+  localId: 1,
+  conversationId: "conversation_1",
+  messageId: uuidv4(),
+  timestamp: new Date().toISOString(),
+  text: "Hello! What can I do to help you?",
+  isUser: false,
+  feedback: "",
+  comment: "",
+  rating: null,
+});
 
 /**
- * Styled components for the layout.
+ * Styles
  */
 const ChatContainer = styled(Container)(({ theme }) => ({
   height: "95vh",
@@ -84,18 +91,13 @@ const MessageContainer = styled(Box)({
   overflow: "auto",
   marginBottom: "16px",
   padding: "16px",
-  // Hide scrollbar for Chrome, Safari, Opera
   "&::-webkit-scrollbar": {
     display: "none",
   },
-  // Hide scrollbar for IE, Edge, Firefox
   "-ms-overflow-style": "none",
   "scrollbar-width": "none",
 });
 
-/**
- * We'll use a Paper for the bubble. The prop `isUser` controls styles.
- */
 const MessageBubble = styled(Paper)<{ isUser: boolean }>(({ isUser }) => ({
   padding: "12px 16px",
   margin: "8px 0",
@@ -123,36 +125,29 @@ const InputContainer = styled(Box)({
 
 const Chatbot = () => {
   /**
-   * Initialize `messages` with the default bot greeting.
+   * Chat state initialization
    */
   const [messages, setMessages] = React.useState<ChatMessage[]>([
     createDefaultBotMessage(),
   ]);
-
-  /**
-   * `inputText` is the user's current typed message.
-   * `isThinking` can show a "Bot is thinking..." prompt.
-   */
   const [inputText, setInputText] = React.useState("");
   const [isThinking, setIsThinking] = React.useState(false);
-  const messagesEndRef = React.useRef<HTMLDivElement>(null);
 
   /**
-   * Modal for negative feedback:
-   * - `showModal`: is dialog open/closed
-   * - `feedbackComment`: user text for negative feedback
-   * - `selectedLocalId`: which message is being commented on
+   * For feedback dialog (shared for thumbs up & thumbs down)
    */
   const [showModal, setShowModal] = React.useState(false);
   const [feedbackComment, setFeedbackComment] = React.useState("");
+  const [feedbackRating, setFeedbackRating] = React.useState<number | null>(5); // default rating
   const [selectedLocalId, setSelectedLocalId] = React.useState<number | null>(
     null
   );
 
+  // We'll scroll to bottom when messages change
+  const messagesEndRef = React.useRef<HTMLDivElement>(null);
+
   /**
-   * Fetch existing messages from DynamoDB once the component mounts.
-   * If your table already has a bot greeting, you'll see it here.
-   * Otherwise, we already have a local default.
+   * Fetch conversation from DynamoDB on mount
    */
   React.useEffect(() => {
     const fetchMessages = async () => {
@@ -161,23 +156,29 @@ const Chatbot = () => {
           `${BACKEND_URL}/messages?conversationId=conversation_1`
         );
         const data = await response.json();
-        // data is an array of items from DynamoDB
-        const newMessages = data.map((item: any, index: number) => ({
-          localId: index + 2, // offset so we don't clash with the first localId=1
-          conversationId: item.conversationId,
-          dbTimestamp: item.timestamp, // ISO string
-          text: item.text,
-          isUser: item.isUser,
-          feedback: item.feedback || "",
-          comment: item.comment || "",
-        })) as ChatMessage[];
 
-        /**
-         * Optionally, you can check if there's already a bot greeting in the DB.
-         * If so, you could skip adding the default message.
-         * For simplicity, let's merge them.
-         */
-        setMessages((prev) => [...prev, ...newMessages]);
+        // Convert each item to ChatMessage
+        let newMessages = data.map((item: any, index: number) => {
+          return {
+            localId: index + 2,
+            conversationId: item.conversationId,
+            messageId: item.messageId,
+            timestamp: item.timestamp,
+            text: item.text,
+            isUser: item.isUser,
+            feedback: item.feedback || "",
+            comment: item.comment || "",
+            rating: item.rating ? Number(item.rating) : null,
+          } as ChatMessage;
+        });
+
+        // Sort if you want chronological
+        newMessages = newMessages.sort(
+          (a: ChatMessage, b: ChatMessage) =>
+            new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        );
+
+        setMessages([createDefaultBotMessage()].concat(newMessages));
       } catch (error) {
         console.error("Fetch error:", error);
       }
@@ -186,183 +187,64 @@ const Chatbot = () => {
     fetchMessages();
   }, []);
 
-  /**
-   * Scrolls the chat to the bottom whenever messages change.
-   */
   React.useEffect(() => {
-    scrollToBottom();
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
   /**
-   * Handle sending a user's new message.
+   * Single function to open the dialog for both thumbs up & thumbs down
    */
-  const handleSend = async () => {
-    if (!inputText.trim()) return;
+  const handleOpenFeedbackDialog = (
+    localId: number,
+    newFeedback: "up" | "down"
+  ) => {
+    setSelectedLocalId(localId);
+    setShowModal(true);
+    // maybe default rating is 10 for "up", 5 for "down"
+    setFeedbackRating(newFeedback === "up" ? 10 : 1);
+    setFeedbackComment("");
 
-    // Create a new localId for the message
-    const newLocalId = Math.max(...messages.map((m) => m.localId)) + 1;
-    // Create an ISO timestamp as the Sort Key
-    const timestampIso = new Date().toISOString();
-
-    const userMessage: ChatMessage = {
-      localId: newLocalId,
-      conversationId: "conversation_1",
-      dbTimestamp: timestampIso,
-      text: inputText,
-      isUser: true,
-      feedback: "",
-      comment: "",
-    };
-
-    // Add to local state
-    setMessages((prev) => [...prev, userMessage]);
-
-    // Send to DynamoDB (POST)
-    try {
-      await fetch(`${BACKEND_URL}/messages`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          conversationId: userMessage.conversationId,
-          text: userMessage.text,
-          isUser: userMessage.isUser,
-          feedback: userMessage.feedback,
-          comment: userMessage.comment,
-        }),
-      });
-    } catch (error) {
-      console.error("Send user message error:", error);
-    }
-
-    setInputText("");
-    setIsThinking(true);
-
-    // Simulate bot response
-    setTimeout(async () => {
-      const botLocalId = newLocalId + 1;
-      const botTimestampIso = new Date().toISOString();
-      const botMessage: ChatMessage = {
-        localId: botLocalId,
-        conversationId: "conversation_1",
-        dbTimestamp: botTimestampIso,
-        text: "Thank you for your message. I'm processing your request.",
-        isUser: false,
-        feedback: "",
-        comment: "",
-      };
-
-      // Update local state
-      setMessages((prev) => [...prev, botMessage]);
-
-      // Also store in DynamoDB
-      try {
-        await fetch(`${BACKEND_URL}/messages`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(botMessage),
-        });
-      } catch (error) {
-        console.error("Send bot message error:", error);
-      }
-
-      setIsThinking(false);
-    }, 1000);
-  };
-
-  /**
-   * Clear local messages and reset to the initial bot greeting.
-   * NOTE: This does not remove existing DynamoDB records unless you add an API call.
-   */
-  const handleClear = () => {
-    setInputText("");
-    // Reset to just the default bot message again
-    setMessages([createDefaultBotMessage()]);
-  };
-
-  /**
-   * Send message on Enter (Shift+Enter for multiline).
-   */
-  const handleKeyPress = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault();
-      handleSend();
-    }
-  };
-
-  /**
-   * Thumbs-up toggles feedback between "" and "up".
-   */
-  const handleThumbUpClick = async (localId: number) => {
-    const message = messages.find((m) => m.localId === localId);
-    if (!message) return;
-
-    const newFeedback = message.feedback === "up" ? "" : "up";
-
-    // Update local state
+    // Set local feedback right away
     setMessages((prev) =>
       prev.map((m) =>
         m.localId === localId ? { ...m, feedback: newFeedback } : m
       )
     );
-
-    // Update in DynamoDB (PUT)
-    try {
-      await fetch(`${BACKEND_URL}/messages`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          conversationId: message.conversationId,
-          timestamp: message.dbTimestamp,
-          feedback: newFeedback,
-          comment: message.comment,
-        }),
-      });
-    } catch (error) {
-      console.error("Update feedback error:", error);
-    }
   };
 
-  /**
-   * Thumbs-down opens a modal for the user to provide a comment,
-   * and locally sets feedback = "down" right away.
-   */
+  const handleThumbUpClick = (localId: number) => {
+    handleOpenFeedbackDialog(localId, "up");
+  };
+
   const handleThumbDownClick = (localId: number) => {
-    setSelectedLocalId(localId);
-
-    setMessages((prev) =>
-      prev.map((m) => (m.localId === localId ? { ...m, feedback: "down" } : m))
-    );
-
-    setShowModal(true);
+    handleOpenFeedbackDialog(localId, "down");
   };
 
   /**
-   * Close the thumbs-down dialog without saving.
+   * Closes dialog without saving anything
    */
   const handleCloseModal = () => {
     setShowModal(false);
     setFeedbackComment("");
+    setFeedbackRating(5);
     setSelectedLocalId(null);
   };
 
   /**
-   * When the user submits their feedback comment, update both local state
-   * and DynamoDB with the reason for the thumbs-down.
+   * When user clicks "Send" in the popin,
+   * we store feedback, rating, comment in DB.
    */
   const handleSubmitFeedback = async () => {
     if (selectedLocalId == null) {
       handleCloseModal();
       return;
     }
-
     // Update local state
     setMessages((prev) =>
       prev.map((m) =>
-        m.localId === selectedLocalId ? { ...m, comment: feedbackComment } : m
+        m.localId === selectedLocalId
+          ? { ...m, comment: feedbackComment, rating: feedbackRating }
+          : m
       )
     );
 
@@ -375,17 +257,107 @@ const Chatbot = () => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             conversationId: message.conversationId,
-            timestamp: message.dbTimestamp,
-            feedback: "down",
+            messageId: message.messageId,
+            feedback: message.feedback, // "up" or "down"
             comment: feedbackComment,
+            rating: feedbackRating,
           }),
         });
       } catch (error) {
         console.error("Update feedback error:", error);
       }
     }
-
     handleCloseModal();
+  };
+
+  /**
+   * Send a new user message, then simulate bot response
+   */
+  const handleSend = async () => {
+    if (!inputText.trim()) return;
+
+    const newLocalId = messages.length
+      ? Math.max(...messages.map((m) => m.localId)) + 1
+      : 1;
+    const newMessageId = uuidv4();
+    const msgTimestamp = new Date().toISOString();
+
+    const userMessage: ChatMessage = {
+      localId: newLocalId,
+      conversationId: "conversation_1",
+      messageId: newMessageId,
+      timestamp: msgTimestamp,
+      text: inputText,
+      isUser: true,
+      feedback: "",
+      comment: "",
+      rating: null,
+    };
+
+    setMessages((prev) => [...prev, userMessage]);
+
+    try {
+      await fetch(`${BACKEND_URL}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(userMessage),
+      });
+    } catch (error) {
+      console.error("Send user message error:", error);
+    }
+
+    setInputText("");
+    setIsThinking(true);
+
+    // Simulate bot response
+    setTimeout(async () => {
+      const botLocalId = newLocalId + 1;
+      const botMsgId = uuidv4();
+      const botTimestamp = new Date().toISOString();
+
+      const botMessage: ChatMessage = {
+        localId: botLocalId,
+        conversationId: "conversation_1",
+        messageId: botMsgId,
+        timestamp: botTimestamp,
+        text: "Thank you for your message. I'm processing your request.",
+        isUser: false,
+        feedback: "",
+        comment: "",
+        rating: null,
+      };
+
+      setMessages((prev) => [...prev, botMessage]);
+
+      try {
+        await fetch(`${BACKEND_URL}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(botMessage),
+        });
+      } catch (error) {
+        console.error("Send bot message error:", error);
+      }
+      setIsThinking(false);
+    }, 1000);
+  };
+
+  /**
+   * Clear local messages
+   */
+  const handleClear = () => {
+    setInputText("");
+    setMessages([createDefaultBotMessage()]);
+  };
+
+  /**
+   * Handle Enter in text field
+   */
+  const handleKeyPress = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      handleSend();
+    }
   };
 
   return (
@@ -401,7 +373,6 @@ const Chatbot = () => {
             }}
           >
             <Box sx={{ display: "flex", alignItems: "flex-end", gap: 1 }}>
-              {/* Bot avatar on the left */}
               {!message.isUser && (
                 <Avatar
                   src={bot_avatar}
@@ -419,12 +390,16 @@ const Chatbot = () => {
                     justifyContent: "space-between",
                   }}
                 >
-                  <Typography
-                    variant="caption"
-                    sx={{ display: "block", mt: 0.5, opacity: 0.7 }}
-                  >
-                    {format(new Date(message.dbTimestamp), "HH:mm")}
-                  </Typography>
+                  {idx !== 0 ? (
+                    <Typography
+                      variant="caption"
+                      sx={{ display: "block", mt: 0.5, opacity: 0.7 }}
+                    >
+                      {format(new Date(message.timestamp), "HH:mm")}
+                    </Typography>
+                  ) : null}
+
+                  {/* Show thumbs only for bot messages except the first greeting, if desired */}
                   {!message.isUser && idx !== 0 && (
                     <Box>
                       <IconButton
@@ -451,9 +426,38 @@ const Chatbot = () => {
                     </Box>
                   )}
                 </Box>
+
+                {/* Show rating if set */}
+                {message.rating && (
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      mt: 0.5,
+                      fontStyle: "italic",
+                    }}
+                  >
+                    Rating:{" "}
+                    <Rating
+                      value={message.rating}
+                      readOnly
+                      size="small"
+                      max={10}
+                    />
+                  </Typography>
+                )}
+                {/* Show comment if set */}
+                {message.comment && (
+                  <Typography
+                    variant="caption"
+                    sx={{ display: "block", mt: 0.5, fontStyle: "italic" }}
+                  >
+                    Feedback: {message.comment}
+                  </Typography>
+                )}
               </MessageBubble>
 
-              {/* User avatar on the right */}
               {message.isUser && (
                 <Avatar
                   src={avatar}
@@ -472,7 +476,7 @@ const Chatbot = () => {
         <div ref={messagesEndRef} />
       </MessageContainer>
 
-      {/* Input field and send/clear buttons */}
+      {/* Input field */}
       <InputContainer>
         <TextField
           fullWidth
@@ -501,10 +505,10 @@ const Chatbot = () => {
         >
           <IoSend />
         </IconButton>
+
         <IconButton
           color="error"
           onClick={handleClear}
-          // Only enable if there's any user message
           disabled={!messages.some((msg) => msg.isUser)}
           sx={{
             backgroundColor: "#e00202",
@@ -520,10 +524,11 @@ const Chatbot = () => {
         </IconButton>
       </InputContainer>
 
-      {/* Dialog for negative feedback */}
+      {/* Dialog for feedback, unchanged styling/layout from your code */}
       <Dialog open={showModal} onClose={handleCloseModal}>
-        <DialogTitle>Could you give feedback about my answer?</DialogTitle>
+        <DialogTitle>Can you give a feedback about my answer?</DialogTitle>
         <DialogContent>
+          {/* Same layout as your original code */}
           <TextField
             fullWidth
             multiline
@@ -532,6 +537,25 @@ const Chatbot = () => {
             onChange={(e) => setFeedbackComment(e.target.value)}
             placeholder="Tell me more..."
           />
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "center",
+              flexDirection: "column",
+              alignItems: "center",
+              marginTop: 1,
+            }}
+          >
+            <Typography component="legend">Rating</Typography>
+            <Rating
+              name="customized-10"
+              value={feedbackRating || 0}
+              max={10}
+              onChange={(_, newVal) => {
+                if (newVal) setFeedbackRating(newVal);
+              }}
+            />
+          </Box>
         </DialogContent>
         <DialogActions>
           <Button variant="contained" onClick={handleSubmitFeedback}>
