@@ -427,6 +427,22 @@ const Chatbot = () => {
 
   return (
     <ContainerWrapper>
+      {/* The export button in top-right corner */}
+      <Tooltip
+        title="Export conversation and feedback to CSV"
+        placement="left"
+        arrow
+      >
+        <ExportButton
+          color="primary"
+          aria-label="export"
+          size="small"
+          onClick={handleExportCsv}
+        >
+          <BiDownload />
+        </ExportButton>
+      </Tooltip>
+
       <ChatContainer>
         <MessageContainer>
           {messages.map((message, idx) => (
@@ -487,7 +503,69 @@ const Chatbot = () => {
                         {format(new Date(message.timestamp), "HH:mm")}
                       </Typography>
                     )}
+
+                    {/* Thumbs for bot messages except the first greeting */}
+                    {!message.isUser && idx !== 0 && (
+                      <Box>
+                        <IconButton
+                          size="small"
+                          onClick={() => handleThumbUpClick(message.localId)}
+                          aria-label="Thumbs up"
+                          color={
+                            message.feedback === "up" ? "success" : "default"
+                          }
+                        >
+                          <IoThumbsUp />
+                        </IconButton>
+
+                        <IconButton
+                          size="small"
+                          onClick={() => handleThumbDownClick(message.localId)}
+                          aria-label="Thumbs down"
+                          color={
+                            message.feedback === "down" ? "error" : "default"
+                          }
+                        >
+                          <IoThumbsDown />
+                        </IconButton>
+                      </Box>
+                    )}
                   </Box>
+
+                  {/* Show rating/comment if available */}
+                  {message.rating && (
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        display: "inline-flex", // use inline‐flex
+                        alignItems: "center",
+                        gap: "4px", // small space between label & stars
+                        whiteSpace: "nowrap", // prevent line breaks
+                        mt: 0.5,
+                        fontStyle: "italic",
+                      }}
+                    >
+                      Rating:
+                      <Rating
+                        value={message.rating}
+                        readOnly
+                        size="small"
+                        max={10}
+                      />
+                    </Typography>
+                  )}
+                  {message.comment && (
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        display: "block",
+                        mt: 0.5,
+                        fontStyle: "italic",
+                      }}
+                    >
+                      Feedback: {message.comment}
+                    </Typography>
+                  )}
                 </MessageBubble>
 
                 {message.isUser && (
@@ -570,6 +648,50 @@ const Chatbot = () => {
             <IoTrashBinOutline />
           </IconButton>
         </InputContainer>
+
+        {/* Feedback Dialog */}
+        <Dialog
+          open={showModal}
+          onClose={handleCloseModal}
+          fullWidth
+          maxWidth="lg"
+        >
+          <DialogTitle>Can you give a feedback about my answer?</DialogTitle>
+          <DialogContent>
+            <TextField
+              fullWidth
+              multiline
+              rows={10}
+              value={feedbackComment}
+              onChange={(e) => setFeedbackComment(e.target.value)}
+              placeholder="Feedback..."
+            />
+            <Box
+              sx={{
+                display: "flex",
+                justifyContent: "center",
+                flexDirection: "column",
+                alignItems: "center",
+                marginTop: 1,
+              }}
+            >
+              <Typography component="legend">Rating</Typography>
+              <Rating
+                name="customized-10"
+                value={feedbackRating || 0}
+                max={10}
+                onChange={(_, newVal) => {
+                  if (newVal) setFeedbackRating(newVal);
+                }}
+              />
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button variant="contained" onClick={handleSubmitFeedback}>
+              Send
+            </Button>
+          </DialogActions>
+        </Dialog>
       </ChatContainer>
     </ContainerWrapper>
   );
