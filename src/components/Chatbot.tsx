@@ -57,7 +57,7 @@ interface ChatMessage {
   agentAliasId?: string;
 }
 
-const BACKEND_URL = "https://2lvum8mh59.execute-api.us-east-1.amazonaws.com";
+const BACKEND_URL = "https://bdkk769r1f.execute-api.us-east-2.amazonaws.com";
 
 /** Default greeting from the bot. */
 const createDefaultBotMessage = (): ChatMessage => ({
@@ -360,7 +360,7 @@ const Chatbot = () => {
     let agentAliasId = "";
     try {
       const llmResponse = await fetch(
-        "https://m0mytrw7ug.execute-api.us-east-1.amazonaws.com/v1/conversation",
+        "https://bdkk769r1f.execute-api.us-east-2.amazonaws.com/v1/conversation",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
